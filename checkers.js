@@ -49,14 +49,14 @@ const HILIGHTS = [BLACK_HILIGHT, BLACK_KING_HILIGHT, WHITE_HILIGHT, WHITE_KING_H
 
 // Initialize the game board
 const board = [
-	[BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
-	[BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
-	[BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
-	[NO_PIECE, NO_PIECE, NO_PIECE, NO_PIECE],
-	[NO_PIECE, NO_PIECE, NO_PIECE, NO_PIECE],
-	[WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
-	[WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
-	[WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
+    [BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
+    [BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
+    [BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
+    [NO_PIECE, NO_PIECE, NO_PIECE, NO_PIECE],
+    [NO_PIECE, NO_PIECE, NO_PIECE, NO_PIECE],
+    [WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
+    [WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
+    [WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
 ];
 
 // Start with BLACK's turn
@@ -98,10 +98,12 @@ function initProgram() {
         `#version 300 es
         precision mediump float;
 
+        uniform mat4 uModelMatrix;
+
         in vec4 aPosition;
         
         void main() {
-            gl_Position = aPosition;
+            gl_Position = uModelMatrix * aPosition;
         }`
     );
     // Fragment Shader
@@ -122,7 +124,8 @@ function initProgram() {
     
     // Get the attribute indices
     program.aPosition = gl.getAttribLocation(program, 'aPosition'); // get the vertex shader attribute "aPosition"
-    
+    program.uModelMatrix = gl.getUniformLocation(program, 'uModelMatrix');
+
     return program;
 }
 
@@ -131,6 +134,19 @@ function initProgram() {
  * Initialize the data buffers.
  */
 function initBuffers() {
+    gl.square = {};
+
+    gl.square.vao = gl.createVertexArray();
+    gl.bindVertexArray(gl.square.vao);
+
+    const coords = [-1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, 1];
+    
+    // Load the coordinate data into the GPU and associate with shader
+    gl.square.positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.square.positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from(coords), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(gl.program.aPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(gl.program.aPosition);
 
     // Cleanup
     gl.bindVertexArray(null);
@@ -152,29 +168,51 @@ function initEvents() {
  */
 function render() {
     gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // render all squares
+    for (let i = 0; i < board.length; ++i) {
+        let row = board[i];
+        const rowStartsWithLight = i % 2 === 0;
+        for (let j = 0; j < row.length; ++j) {
+            const isEvenColumn = (j % 2 === 0)
+            const isLight = rowStartsWithLight !== isEvenColumn;
+
+            let size = 1/8;
+            let a = glMatrix.mat4.fromTranslation(glMatrix.mat4.create(), [size * (-7 + ((j + (rowStartsWithLight ? 0.5 : 0)) * 4)), size * (7 - (i * 2)), 0]);
+            let b = glMatrix.mat4.fromScaling(glMatrix.mat4.create(), [size, size, size]);
+            let c = glMatrix.mat4.multiply(glMatrix.mat4.create(), a, b);
+            gl.uniformMatrix4fv(gl.program.uModelMatrix, false, c);
+            renderSquare(isLight);
+        }
+    }
 }
 
+function renderSquare(isLight) {
+    gl.bindVertexArray(gl.square.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.bindVertexArray(null);
+}
 
 function reset_potentials() {
-	/**
-	 * Sets POTENTIAL* spaces to NO_PIECE and *_HILIGHT to the non-hilight versions. Also clears
+    /**
+     * Sets POTENTIAL* spaces to NO_PIECE and *_HILIGHT to the non-hilight versions. Also clears
      * the hilighted_piece variable.
-	 */
-	for (let i = 0; i < board.length; ++i) {
-		let row = board[i];
-		for (let j = 0; j < row.length; ++j) {
-			if (row[j] === POTENTIAL || row[j] === POTENTIAL_KING) {
-				row[j] = NO_PIECE;
-			} else if (row[j] === BLACK_HILIGHT) {
-				row[j] = BLACK_PIECE;
-			} else if (row[j] === WHITE_HILIGHT) {
-				row[j] = WHITE_PIECE;
-			} else if (row[j] === BLACK_KING_HILIGHT) {
-				row[j] = BLACK_KING;
-			} else if (row[j] === WHITE_KING_HILIGHT) {
-				row[j] = WHITE_KING;
-			}
-		}
-	}
-	hilighted_piece = null;
+     */
+    for (let i = 0; i < board.length; ++i) {
+        let row = board[i];
+        for (let j = 0; j < row.length; ++j) {
+            if (row[j] === POTENTIAL || row[j] === POTENTIAL_KING) {
+                row[j] = NO_PIECE;
+            } else if (row[j] === BLACK_HILIGHT) {
+                row[j] = BLACK_PIECE;
+            } else if (row[j] === WHITE_HILIGHT) {
+                row[j] = WHITE_PIECE;
+            } else if (row[j] === BLACK_KING_HILIGHT) {
+                row[j] = BLACK_KING;
+            } else if (row[j] === WHITE_KING_HILIGHT) {
+                row[j] = WHITE_KING;
+            }
+        }
+    }
+    hilighted_piece = null;
 }
