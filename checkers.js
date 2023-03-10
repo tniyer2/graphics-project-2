@@ -47,17 +47,21 @@ const WHITES = [WHITE_PIECE, WHITE_HILIGHT, WHITE_KING, WHITE_KING_HILIGHT];
 const KINGS = [BLACK_KING, BLACK_KING_HILIGHT, WHITE_KING, WHITE_KING_HILIGHT, POTENTIAL_KING];
 const HILIGHTS = [BLACK_HILIGHT, BLACK_KING_HILIGHT, WHITE_HILIGHT, WHITE_KING_HILIGHT];
 
+function create_starting_board() {
+    return [
+        [BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
+        [BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
+        [BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
+        [NO_PIECE, NO_PIECE, NO_PIECE, NO_PIECE],
+        [NO_PIECE, NO_PIECE, NO_PIECE, NO_PIECE],
+        [WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
+        [WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
+        [WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
+    ];
+}
+
 // Initialize the game board
-const board = [
-    [BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
-    [BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
-    [BLACK_PIECE, BLACK_PIECE, BLACK_PIECE, BLACK_PIECE],
-    [NO_PIECE, NO_PIECE, NO_PIECE, NO_PIECE],
-    [NO_PIECE, NO_PIECE, NO_PIECE, NO_PIECE],
-    [WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
-    [WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
-    [WHITE_PIECE, WHITE_PIECE, WHITE_PIECE, WHITE_PIECE],
-];
+const GLB_board = create_starting_board();
 
 // Start with BLACK's turn
 let turn = BLACK_PIECE;
@@ -160,6 +164,16 @@ function initBuffers() {
 function initEvents() {
 }
 
+function iterateBoard(board, callback) {
+    for (let i = 0; i < 8; ++i) {
+        const rowStartsWithLight = i % 2 === 0; // first row is light
+        for (let j = 0; j < 8; ++j) {
+            const isEvenColumn = (j % 2 === 0)
+            const isSquareDark = rowStartsWithLight !== isEvenColumn;
+            callback(i, j, rowStartsWithLight, isSquareDark);
+        }
+    }
+}
 
 /**
  * Render the scene. Uses loop(s) to to go over the entire board and render each square and piece.
@@ -169,22 +183,19 @@ function initEvents() {
 function render() {
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // render all squares
-    for (let i = 0; i < board.length; ++i) {
-        let row = board[i];
-        const rowStartsWithLight = i % 2 === 0;
-        for (let j = 0; j < row.length; ++j) {
-            const isEvenColumn = (j % 2 === 0)
-            const isLight = rowStartsWithLight !== isEvenColumn;
-
+    iterateBoard(GLB_board, function(row_i, col_i, rowStartsWithLight, isSquareDark) {
+        if (isSquareDark) {
             let size = 1/8;
-            let a = glMatrix.mat4.fromTranslation(glMatrix.mat4.create(), [size * (-7 + ((j + (rowStartsWithLight ? 0.5 : 0)) * 4)), size * (7 - (i * 2)), 0]);
+
+            let translateX = size * (-7 + (col_i * 2));
+            let translateY = size * (7 - (row_i * 2));
+            let a = glMatrix.mat4.fromTranslation(glMatrix.mat4.create(), [translateX, translateY, 0]);
             let b = glMatrix.mat4.fromScaling(glMatrix.mat4.create(), [size, size, size]);
             let c = glMatrix.mat4.multiply(glMatrix.mat4.create(), a, b);
             gl.uniformMatrix4fv(gl.program.uModelMatrix, false, c);
-            renderSquare(isLight);
+            renderSquare(false);
         }
-    }
+    })
 }
 
 function renderSquare(isLight) {
@@ -198,8 +209,8 @@ function reset_potentials() {
      * Sets POTENTIAL* spaces to NO_PIECE and *_HILIGHT to the non-hilight versions. Also clears
      * the hilighted_piece variable.
      */
-    for (let i = 0; i < board.length; ++i) {
-        let row = board[i];
+    for (let i = 0; i < GLB_board.length; ++i) {
+        let row = GLB_board[i];
         for (let j = 0; j < row.length; ++j) {
             if (row[j] === POTENTIAL || row[j] === POTENTIAL_KING) {
                 row[j] = NO_PIECE;
