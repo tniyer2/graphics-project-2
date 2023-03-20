@@ -64,7 +64,7 @@ function create_starting_board() {
 const GLB_board = create_starting_board();
 
 // Start with BLACK's turn
-let turn = BLACK_PIECE;
+let turn = "black";
 let hilighted_piece = null;
 
 
@@ -89,6 +89,8 @@ window.addEventListener('load', function init() {
 
     // Render the static scene
     render();
+
+    canvas.addEventListener('click', onClick);
 });
 
 
@@ -118,7 +120,7 @@ function initProgram() {
         out vec4 fragColor;
 
         void main() {
-            fragColor = vec4(1, 0, 0, 1);
+            fragColor = vec4(0.58, 0.294, 0, 1);
         }`
     );
 
@@ -139,11 +141,17 @@ function initProgram() {
  */
 function initBuffers() {
     gl.square = {};
+    // gl.circle = {};
 
     gl.square.vao = gl.createVertexArray();
     gl.bindVertexArray(gl.square.vao);
 
+    // gl.circle.vao = gl.createVertexArray();
+    // gl.bindVertexArray(gl.circle.vao);
+
     const coords = [-1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, 1];
+    // const circleCoords = [-1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, 1];
+    // circle(0, 0, 1, 64, coords);
     
     // Load the coordinate data into the GPU and associate with shader
     gl.square.positionBuffer = gl.createBuffer();
@@ -151,6 +159,13 @@ function initBuffers() {
     gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from(coords), gl.STATIC_DRAW);
     gl.vertexAttribPointer(gl.program.aPosition, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(gl.program.aPosition);
+
+    // Load the coordinate data into the GPU and associate with shader
+    // gl.circle.positionBuffer = gl.createBuffer();
+    // gl.bindBuffer(gl.ARRAY_BUFFER, gl.circle.positionBuffer);
+    // gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from(circleCoords), gl.STATIC_DRAW);
+    // gl.vertexAttribPointer(gl.program.aPosition, 2, gl.FLOAT, false, 0, 0);
+    // gl.enableVertexAttribArray(gl.program.aPosition);
 
     // Cleanup
     gl.bindVertexArray(null);
@@ -196,6 +211,22 @@ function render() {
             renderSquare(false);
         }
     })
+
+    // iterateBoard(GLB_board, function(row_i, col_i, rowStartsWithLight, isSquareDark) {
+    //     if (isSquareDark) {
+    //         let size = 1/8;
+
+    //         let translateX = size * (-7 + (col_i * 2));
+    //         let translateY = size * (7 - (row_i * 2));
+    //         let a = glMatrix.mat4.fromTranslation(glMatrix.mat4.create(), [translateX, translateY, 0]);
+    //         let b = glMatrix.mat4.fromScaling(glMatrix.mat4.create(), [size, size, size]);
+    //         let c = glMatrix.mat4.multiply(glMatrix.mat4.create(), a, b);
+    //         gl.uniformMatrix4fv(gl.program.uModelMatrix, false, c);
+    //         renderCircle(false);
+    //     }
+    // })
+
+
 }
 
 function renderSquare(isLight) {
@@ -203,6 +234,42 @@ function renderSquare(isLight) {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.bindVertexArray(null);
 }
+
+// function renderCircle(isLight) {
+//     // Clear the current rendering
+//     gl.clear(gl.COLOR_BUFFER_BIT);
+    
+//     // Draw the circle
+//     gl.bindVertexArray(gl.circle.vao);
+//     gl.drawArrays(gl.TRIANGLES, 0, 64 * 3); // Hardcoded Num sides to be = 64
+//     gl.bindVertexArray(null);
+// }
+
+// /**
+//  * Add the vertices for a circle centered at (cx, cy) with a radius of r and n sides to the
+//  * array coords.
+//  */
+// function circle(cx, cy, r, n, coords) {
+//     // The angle between subsequent vertices
+//     let theta = 2*Math.PI/n;
+
+//     // Compute the "current" coordinate (easiest one)
+//     let ax = cx+r, ay = cy;
+
+//     // Loop over each of the triangles we have to create
+//     for (let i = 1; i <= n; ++i) {
+//         // TODO: Compute the x,y of the next coordinate (requires sin/cos)
+//         let bx = cx+Math.cos(i*theta)*r
+//         let by = cy+Math.sin(i*theta)*r;
+
+//         // TODO: push an entire triangle onto coords
+//         coords.push(cx, cy, ax, ay, bx, by);
+
+//         // TODO: Assign the current coordinate as the next coordinate
+//         ax = bx;
+//         ay = by;
+//     }
+// }
 
 function reset_potentials() {
     /**
@@ -226,4 +293,81 @@ function reset_potentials() {
         }
     }
     hilighted_piece = null;
+}
+
+function onClick(e) {
+    e.preventDefault();
+
+    // Convert x and y from window coordinates (pixels) to clip coordinates (-1,-1 to 1,1)
+    let [x, y, w, h] = [e.offsetX, e.offsetY, this.width, this.height];
+    x = (x / (w/2)) - 1;
+    y = (-y / (h/2)) + 1;
+
+    selectSquare(x, y);
+    render();
+}
+
+function selectSquare(x, y) {
+    let valueAtSquare = GLB_board[x][y];
+
+    let squareIsPiece = isValidPiece(true, valueAtSquare) || isValidPiece(false, valueAtSquare);
+
+    // validates the moving piece
+    if (hilighted_piece != null) {
+        if (canSquareCanBeMovedTo(hilighted_piece.x, hilighted_piece.y, x, y)) {
+            // TODO: move piece
+            return;
+        }
+    }
+
+    if (squareIsPiece) {
+        hilighted_piece = {x, y};
+        // TODO: highlight squares the piece can move to
+    }
+}
+
+function isValidPiece(isBlack, value) {
+    return isBlack ? "black" && BLACKS.indexOf(value) !== -1
+        : "white" && WHITES.indexOf(value) !== -1;
+}
+
+function canSquareCanBeMovedTo(pieceX, pieceY, squareX, squareY) {
+    const piece = board[pieceX][pieceY];
+    const isKing = KINGS.indexOf(piece) !== -1;
+    const squareToMoveTo = board[squareX][squareY];
+
+    let squareAfterX = -1;
+    let squareAfterY = -1;
+    let squareAfter = null;
+    if (Math.abs(squareX - pieceX) === 1 && Math.abs(squareY - pieceY) === 1) {
+        squareAfterX = pieceX + (2 * (squareX - pieceX));
+        squareAfterY = pieceY + (2 * (squareY - pieceY));
+
+        if (squareAfterX < 0 || squareAfterX >= 8
+            || squareAfterY < 0 || squareAfterY > 8) {
+            squareAfterX = -1;
+            squareAfterY = -1;
+        } else {
+            squareAfter = board[squareAfterX][squareAfterY];   
+        }
+    }
+
+    if (!isKing) {
+        // TODO: check if normal piece can be moved
+        if (squareToMoveTo.indexOf(NO_PIECE)) {
+            // piece.move();
+        } else if (squareToMoveTo.indexOf(POTENTIAL) && squareAfter.indexOf(NO_PIECE)) {
+            // piece.move(); needs to move over the piece
+        }
+        
+        return;
+    } else {
+        // TODO: check if king can be moved
+        if(squareToMoveTo.indexOf(NO_PIECE)) {
+            // piece.move();
+        } else if (squareToMoveTo.indexOf(POTENTIAL) && squareAfter.indexOf(NO_PIECE)) {
+            // piece.move(); needs to move over the piece
+        }
+        return;
+    }
 }
