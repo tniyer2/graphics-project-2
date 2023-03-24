@@ -15,9 +15,9 @@ const IMMOVABLE_SQUARE_COLOR = [1.0, 0.89, 0.67, 1.0]; // light squares
 
 // Piece Colors
 const PLAYER_1_PIECE_COLOR =           [0.7, 0.0, 0.0, 1.0]; // red
-const PLAYER_1_HIGHLIGHTED_PIECE_COLOR = [0.8, 0.3, 0.3, 1.0]; // lighter red
+const PLAYER_1_POTENTIAL_PIECE_COLOR = [0.8, 0.3, 0.3, 1.0]; // lighter red
 const PLAYER_2_PIECE_COLOR =           [0.8, 0.8, 0.8, 1.0]; // gray
-const PLAYER_2_HIGHLIGHTED_PIECE_COLOR = [0.9, 0.9, 0.9, 1.0]; // lighter gray
+const PLAYER_2_POTENTIAL_PIECE_COLOR = [0.9, 0.9, 0.9, 1.0]; // lighter gray
 
 
 const BORDER_THICKNESS = 0.05; // in proportion to to the object's size
@@ -28,21 +28,22 @@ const POTENTIAL_PIECE_COLOR = [1.0, 1.0, 0.6, 1.0];
 // The possible states for any square on the game board
 const ALWAYS_EMPTY = -1;
 const NO_PIECE = 0;
-const BLACK_PIECE = 1;
-const WHITE_PIECE = 2;
-const BLACK_HILIGHT = 3;
-const WHITE_HILIGHT = 4;
-const BLACK_KING = 5;
-const WHITE_KING = 6;
-const BLACK_KING_HILIGHT = 7;
-const WHITE_KING_HILIGHT = 8;
+const PLAYER_1_PIECE = 1;
+const PLAYER_2_PIECE = 2;
+const PLAYER_1_PIECE_HIGHLIGHT = 3;
+const PLAYER_2_PIECE_HIGHLIGHT = 4;
+const PLAYER_1_KING = 5;
+const PLAYER_2_KING = 6;
+const PLAYER_1_KING_HIGHLIGHT = 7;
+const PLAYER_2_KING_HIGHLIGHT = 8;
 const POTENTIAL = 9;
 const POTENTIAL_KING = 10;
 
-const PLAYER_2_PIECES = [ BLACK_PIECE, BLACK_HILIGHT, BLACK_KING, BLACK_KING_HILIGHT ];
-const PLAYER_1_PIECES = [ WHITE_PIECE, WHITE_HILIGHT, WHITE_KING, WHITE_KING_HILIGHT ];
-const KINGS = [ BLACK_KING, BLACK_KING_HILIGHT, WHITE_KING, WHITE_KING_HILIGHT, POTENTIAL_KING ];
-const HIGHLIGHTS = [ BLACK_HILIGHT, BLACK_KING_HILIGHT, WHITE_HILIGHT, WHITE_KING_HILIGHT ];
+const PLAYER_1_PIECES = [ PLAYER_1_PIECE, PLAYER_1_PIECE_HIGHLIGHT, PLAYER_1_KING, PLAYER_1_KING_HIGHLIGHT ];
+const PLAYER_2_PIECES = [ PLAYER_2_PIECE, PLAYER_2_PIECE_HIGHLIGHT, PLAYER_2_KING, PLAYER_2_KING_HIGHLIGHT ];
+const KINGS = [ PLAYER_1_KING, PLAYER_1_KING_HIGHLIGHT, PLAYER_2_KING, PLAYER_2_KING_HIGHLIGHT, POTENTIAL_KING ];
+const HIGHLIGHTS = [ PLAYER_1_PIECE_HIGHLIGHT, PLAYER_1_KING_HIGHLIGHT, PLAYER_2_PIECE_HIGHLIGHT, PLAYER_2_KING_HIGHLIGHT ];
+const POTENTIALS = [ POTENTIAL, POTENTIAL_KING ];
 
 function create_starting_game_state() {
     const createRow = (type, offset) => Array(4).fill()
@@ -50,16 +51,16 @@ function create_starting_game_state() {
 
     return {
         isPlayer1sTurn: true,
-        highlighted_piece: null,
+        selected_piece: null,
         board: [
-            createRow(BLACK_PIECE, true),
-            createRow(BLACK_PIECE, false),
-            createRow(BLACK_PIECE, true),
+            createRow(PLAYER_1_PIECE, true),
+            createRow(PLAYER_1_PIECE, false),
+            createRow(PLAYER_1_PIECE, true),
             createRow(NO_PIECE,    false),
             createRow(NO_PIECE,    true),
-            createRow(WHITE_PIECE, false),
-            createRow(WHITE_PIECE, true),
-            createRow(WHITE_PIECE, false)
+            createRow(PLAYER_2_PIECE, false),
+            createRow(PLAYER_2_PIECE, true),
+            createRow(PLAYER_2_PIECE, false)
         ]
     };
 }
@@ -235,22 +236,24 @@ function onClick(e) {
     x = Math.ceil(((x + 1) * 4) - 1);
     y = Math.ceil(((1 - y) * 4) - 1);
 
-    // - If another valid square is clicked instead then the indicators are updated for the new valid piece 
-    reset_potentials();
-    GLB_gameState.highlighted_piece = {x: x, y: y};
-    highlightPotentialMoves(x, y);
+    console.log(x, y);
 
-    // - After the initial click an indicator is drawn in all of the valid destination squares 
+    // // - If another valid square is clicked instead then the indicators are updated for the new valid piece 
+    // reset_potentials();
+    // GLB_gameState.selected_piece = {x: x, y: y};
+    // highlightPotentialMoves(x, y);
 
-    // - If a square with an indicator is clicked, then the piece is moved appropriately (possibly removing jumped 
-    // pieces and/or being promoted to a king) 
-    if ( GLB_gameState.highlighted_piece != null) {
-        if (canSquareCanBeMovedTo(GLB_gameState.highlighted_piece.x, GLB_gameState.highlighted_piece.y, x, y)) {
-            return;
-        } else {
-            reset_potentials();
-        }
-    }
+    // // - After the initial click an indicator is drawn in all of the valid destination squares 
+
+    // // - If a square with an indicator is clicked, then the piece is moved appropriately (possibly removing jumped 
+    // // pieces and/or being promoted to a king) 
+    // if ( GLB_gameState.selected_piece != null) {
+    //     if (canSquareCanBeMovedTo(GLB_gameState.selected_piece.x, GLB_gameState.selected_piece.y, x, y)) {
+    //         return;
+    //     } else {
+    //         reset_potentials();
+    //     }
+    // }
     
     selectSquare(x, y);
     render();
@@ -262,28 +265,57 @@ function isPieceOwnedByPlayerWithCurrentTurn(squareValue, isPlayer1sTurn) {
 }
 
 function selectSquare(x, y) {
-    let squareValue = GLB_gameState.board[x][y];
+    let squareValue = GLB_gameState.board[y][x];
+    console.log(squareValue);
 
-    let isSquarePiece = isPieceOwnedByPlayerWithCurrentTurn(
+    let isPieceOnSquare = isPieceOwnedByPlayerWithCurrentTurn(
         squareValue, GLB_gameState.isPlayer1sTurn);
 
-    // validates the moving piece
-    if (GLB_gameState.highlighted_piece != null) {
-        if (canSquareBeMovedTo(GLB_gameState.highlighted_piece.x, GLB_gameState.highlighted_piece.y, x, y)) {
-            // TODO: move piece
-
-            return;
-        } else {
+    if (isPieceOnSquare) {
+        if (!isPieceSelected(x, y)) {
             reset_potentials();
-
+            selectPiece(squareValue, x, y);
         }
-    }
-
-    if (isSquarePiece) {
-        GLB_gameState.highlighted_piece = {x, y};
-        // TODO: highlight squares the piece can move to
+    } else if (isSquareTypeIn(squareValue, POTENTIALS)) {
+        const sp = GLB_gameState.selected_piece;
+        movePiece(sp.x, sp.y, x, y);
     }
 }
+
+function selectPiece(pieceValue, x, y) {
+    const moves = getPossibleMoves(x, y);
+    highlightSquares(moves);
+
+    GLB_gameState.selected_piece = {x, y};
+    GLB_gameState.board[y][x] = toHighlighted(pieceValue);
+}
+
+function toHighlighted(piece) {
+    switch (piece) {
+    case PLAYER_1_PIECE:
+        return PLAYER_1_PIECE_HIGHLIGHT;
+    case PLAYER_1_KING:
+        return PLAYER_1_KING_HIGHLIGHT;
+    case PLAYER_2_PIECE:
+        return PLAYER_2_PIECE_HIGHLIGHT;
+    case PLAYER_2_KING:
+        return PLAYER_2_KING_HIGHLIGHT;
+    default:
+        throw new Error("Invalid type.");
+    }
+}
+
+function getPossibleMoves(x, y) {
+
+}
+
+function highlightSquares(moves) {
+
+}
+
+function movePiece(fromX, fromY, toX, toY) {
+    // TODO
+} 
 
 function canSquareBeMovedTo(pieceX, pieceY, squareX, squareY) {
     const piece = GLB_gameState.board[pieceX][pieceY];
@@ -338,14 +370,14 @@ function reset_potentials() {
 
             if (square === POTENTIAL || square === POTENTIAL_KING) {
                 newSquare = NO_PIECE;
-            } else if (square === BLACK_HILIGHT) {
-                newSquare = BLACK_PIECE;
-            } else if (square === WHITE_HILIGHT) {
-                newSquare = WHITE_PIECE;
-            } else if (square === BLACK_KING_HILIGHT) {
-                newSquare = BLACK_KING;
-            } else if (square === WHITE_KING_HILIGHT) {
-                newSquare = WHITE_KING;
+            } else if (square === PLAYER_1_PIECE_HIGHLIGHT) {
+                newSquare = PLAYER_1_PIECE;
+            } else if (square === PLAYER_2_PIECE_HIGHLIGHT) {
+                newSquare = PLAYER_2_PIECE;
+            } else if (square === PLAYER_1_KING_HIGHLIGHT) {
+                newSquare = PLAYER_1_KING;
+            } else if (square === PLAYER_2_KING_HIGHLIGHT) {
+                newSquare = PLAYER_2_KING;
             } else {
                 newSquare = square;
             }
@@ -354,7 +386,7 @@ function reset_potentials() {
         }
     }
 
-    GLB_gameState.highlighted_piece = null;
+    GLB_gameState.selected_piece = null;
 }
 
 /**
@@ -372,7 +404,7 @@ function render() {
         if (!isSquareEmpty(squareValue)) {                
             renderPiece(
                 isSquareTypeIn(squareValue, PLAYER_1_PIECES),
-                isSquareHighlighted(row, col),
+                isSquareTypeIn(squareValue, HIGHLIGHTS),
                 calcMatrixForSquare(row, col, PIECE_SIZE),
                 calcMatrixForSquare(row, col, PIECE_SIZE * (1 + BORDER_THICKNESS))
             );
@@ -401,8 +433,8 @@ function isSquareTypeIn(type, types) {
     return types.indexOf(type) !== -1;
 }
 
-function isSquareHighlighted(squareX, squareY) {
-    const h = GLB_gameState.highlighted_piece;
+function isPieceSelected(squareX, squareY) {
+    const h = GLB_gameState.selected_piece;
     return h !== null && h.x === squareX && h.y === squareY;
 }
 
@@ -436,9 +468,9 @@ function renderSquare(isSquareMoveable, modelMatrix) {
 /**
  * Renders a circle for the piece.
  */
-function renderPiece(isPlayer1sPiece, isHighlighted, modelMatrix, borderMatrix) {
+function renderPiece(isPlayer1sPiece, isPotential, modelMatrix, borderMatrix) {
     checkBoolean(isPlayer1sPiece);
-    checkBoolean(isHighlighted);
+    checkBoolean(isPotential);
 
     // Draw the Border
     gl.uniformMatrix4fv(gl.program.uModelMatrix, false, borderMatrix);
@@ -451,7 +483,7 @@ function renderPiece(isPlayer1sPiece, isHighlighted, modelMatrix, borderMatrix) 
     // Draw the Piece
     gl.uniformMatrix4fv(gl.program.uModelMatrix, false, modelMatrix);
 
-    const c = getPieceColor(isPlayer1sPiece, isHighlighted);
+    const c = getPieceColor(isPlayer1sPiece, isPotential);
     gl.uniform4fv(gl.program.uColor, Float32Array.from(c));
 
     renderTriangles(gl.normalPiece);
@@ -463,16 +495,16 @@ function renderTriangles(model) {
     gl.bindVertexArray(null);
 }
 
-function getPieceColor(isPlayer1sPiece, isHighlighted) {
+function getPieceColor(isPlayer1sPiece, isPotential) {
     if (isPlayer1sPiece) {
-        if (isHighlighted) {
-            return PLAYER_1_HIGHLIGHTED_PIECE_COLOR;
+        if (isPotential) {
+            return PLAYER_1_POTENTIAL_PIECE_COLOR;
         } else {
             return PLAYER_1_PIECE_COLOR;
         }
     } else {
-        if (isHighlighted) {
-            return PLAYER_2_HIGHLIGHTED_PIECE_COLOR;
+        if (isPotential) {
+            return PLAYER_2_POTENTIAL_PIECE_COLOR;
         } else {
             return PLAYER_2_PIECE_COLOR;
         }
