@@ -224,74 +224,48 @@ function initEvents() {
 }
 
 function onClick(e) {
-    // e.preventDefault();
+    e.preventDefault();
 
-    // // Convert x and y from window coordinates (pixels) to clip coordinates (-1,-1 to 1,1)
-    // let [x, y, w, h] = [e.offsetX, e.offsetY, this.width, this.height];
-    // x = (x / (w/2)) - 1;
-    // y = (-y / (h/2)) + 1;
+    // Convert x and y from window coordinates (pixels) to clip coordinates (-1,-1 to 1,1)
+    let [x, y, w, h] = [e.offsetX, e.offsetY, this.width, this.height];
+    x = (x / (w / 2)) - 1;
+    y = (-y / (h / 2)) + 1;
 
-    // // - If another valid square is clicked instead then the indicators are updated for the new valid piece 
-    // if (isValidSquare(x, y)) {
-    //     reset_potentials();
-    //     GLB_gameState.highlighted_piece = {x: x, y: y};
-    //     highlightPotentialMoves(x, y);
-    // }   else {
-    //     return;
-    // }
+    // Convert from clip coordinates (-1,-1, to 1,1) to board coordinates (0,0 to 7,7)
+    x = Math.ceil(((x + 1) * 4) - 1);
+    y = Math.ceil(((1 - y) * 4) - 1);
 
-    // // - After the initial click an indicator is drawn in all of the valid destination squares 
+    // - If another valid square is clicked instead then the indicators are updated for the new valid piece 
+    reset_potentials();
+    GLB_gameState.highlighted_piece = {x: x, y: y};
+    highlightPotentialMoves(x, y);
 
-    // // - If a square with an indicator is clicked, then the piece is moved appropriately (possibly removing jumped 
-    // // pieces and/or being promoted to a king) 
-    // if ( GLB_gameState.highlighted_piece != null) {
-    //     if (canSquareCanBeMovedTo(GLB_gameState.highlighted_piece.x, GLB_gameState.highlighted_piece.y, x, y)) {
-    //         return;
-    //     } else {
-    //         reset_potentials();
-    //     }
-    // }
-    
-    // selectSquare(x, y);
-    // render();
-}
+    // - After the initial click an indicator is drawn in all of the valid destination squares 
 
-/**
- * Sets POTENTIAL* spaces to NO_PIECE and *_HILIGHT to the non-hilight versions. Also clears
- * the hilighted_piece variable.
- */
-function reset_potentials() {
-    for (let i = 0; i < BOARD_SIZE; ++i) {
-        for (let j = 0; j < BOARD_SIZE; ++j) {
-            const square = GLB_gameState.board[i][j];
-            let newSquare;
-
-            if (square === POTENTIAL || square === POTENTIAL_KING) {
-                newSquare = NO_PIECE;
-            } else if (square === BLACK_HILIGHT) {
-                newSquare = BLACK_PIECE;
-            } else if (square === WHITE_HILIGHT) {
-                newSquare = WHITE_PIECE;
-            } else if (square === BLACK_KING_HILIGHT) {
-                newSquare = BLACK_KING;
-            } else if (square === WHITE_KING_HILIGHT) {
-                newSquare = WHITE_KING;
-            } else {
-                newSquare = square;
-            }
-
-            GLB_gameState.board[i][j] = newSquare;
+    // - If a square with an indicator is clicked, then the piece is moved appropriately (possibly removing jumped 
+    // pieces and/or being promoted to a king) 
+    if ( GLB_gameState.highlighted_piece != null) {
+        if (canSquareCanBeMovedTo(GLB_gameState.highlighted_piece.x, GLB_gameState.highlighted_piece.y, x, y)) {
+            return;
+        } else {
+            reset_potentials();
         }
     }
+    
+    selectSquare(x, y);
+    render();
+}
 
-    GLB_gameState.highlighted_piece = null;
+function isPieceOwnedByPlayerWithCurrentTurn(squareValue, isPlayer1sTurn) {
+    return isSquareTypeIn(squareValue,
+        isPlayer1sTurn ? PLAYER_1_PIECES : PLAYER_2_PIECES);
 }
 
 function selectSquare(x, y) {
     let squareValue = GLB_gameState.board[x][y];
 
-    let isSquarePiece = isSquareTypeIn(squareValue,
-        GLB_gameState.isPlayer1sTurn ? PLAYER_1_PIECES : PLAYER_2_PIECES);
+    let isSquarePiece = isPieceOwnedByPlayerWithCurrentTurn(
+        squareValue, GLB_gameState.isPlayer1sTurn);
 
     // validates the moving piece
     if (GLB_gameState.highlighted_piece != null) {
@@ -350,6 +324,37 @@ function canSquareBeMovedTo(pieceX, pieceY, squareX, squareY) {
         }
         return;
     }
+}
+
+/**
+ * Sets POTENTIAL* spaces to NO_PIECE and *_HILIGHT to the non-hilight versions. Also clears
+ * the hilighted_piece variable.
+ */
+function reset_potentials() {
+    for (let i = 0; i < BOARD_SIZE; ++i) {
+        for (let j = 0; j < BOARD_SIZE; ++j) {
+            const square = GLB_gameState.board[i][j];
+            let newSquare;
+
+            if (square === POTENTIAL || square === POTENTIAL_KING) {
+                newSquare = NO_PIECE;
+            } else if (square === BLACK_HILIGHT) {
+                newSquare = BLACK_PIECE;
+            } else if (square === WHITE_HILIGHT) {
+                newSquare = WHITE_PIECE;
+            } else if (square === BLACK_KING_HILIGHT) {
+                newSquare = BLACK_KING;
+            } else if (square === WHITE_KING_HILIGHT) {
+                newSquare = WHITE_KING;
+            } else {
+                newSquare = square;
+            }
+
+            GLB_gameState.board[i][j] = newSquare;
+        }
+    }
+
+    GLB_gameState.highlighted_piece = null;
 }
 
 /**
