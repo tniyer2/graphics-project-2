@@ -1,31 +1,28 @@
 // Checkers Game using WebGL
-// AUTHORS: Tanishq Iyer, Bryan Cohen
+// AUTHORS: Bryan Cohen, Tanishq Iyer
 'use strict';
 
 ////////// Constants //////////
-// Feel free to use any of these that you wish, or not use them, or change them
 
 // Drawing Sizes
-const SQUARE_SIZE = 1 / 8; // 8 boxes across, screen is 2 units wide (from -1 to 1)
-const PIECE_SCALE = SQUARE_SIZE * 0.8; // make the radius a little smaller than a square so it fits inside
+const BOARD_SIZE = 8; // num squares in a row or column
+const SQUARE_SIZE = 1 / BOARD_SIZE;
+const PIECE_SIZE = SQUARE_SIZE * 0.8;
 
 // Square Colors
-const DARK_SQUARE_COLOR = [0.82, 0.55, 0.28, 1.0];
-const LIGHT_SQUARE_COLOR = [1.0, 0.89, 0.67, 1.0];
+const MOVEABLE_SQUARE_COLOR = [0.82, 0.55, 0.28, 1.0]; // dark squares
+const IMMOVABLE_SQUARE_COLOR = [1.0, 0.89, 0.67, 1.0]; // light squares
 
-// Player Colors
-const PLAYER_1_PIECE_COLOR = [0.7, 0.0, 0.0, 1.0]; // red
-const PLAYER_2_PIECE_COLOR = [0.8, 0.8, 0.8, 1.0]; // gray
-const PLAYER_1_PIECE_HIGHLIGHT_COLOR = [0.8, 0.3, 0.3, 1.0]; // lighter red
-const PLAYER_2_PIECE_HIGHLIGHT_COLOR = [0.9, 0.9, 0.9, 1.0]; // lighter gray
+// Piece Colors
+const PLAYER_1_PIECE_COLOR =           [0.7, 0.0, 0.0, 1.0]; // red
+const PLAYER_1_HIGHLIGHTED_PIECE_COLOR = [0.8, 0.3, 0.3, 1.0]; // lighter red
+const PLAYER_2_PIECE_COLOR =           [0.8, 0.8, 0.8, 1.0]; // gray
+const PLAYER_2_HIGHLIGHTED_PIECE_COLOR = [0.9, 0.9, 0.9, 1.0]; // lighter gray
 
-const PIECE_COLORS = [
-    [ PLAYER_1_PIECE_COLOR, PLAYER_1_PIECE_HIGHLIGHT_COLOR ],
-    [ PLAYER_2_PIECE_COLOR, PLAYER_2_PIECE_HIGHLIGHT_COLOR ]
-];
 
-// Other Colors
-const BORDER_CURRENT_TURN_COLOR = [0.0, 0.0, 0.0, 1.0];
+const BORDER_THICKNESS = 0.05; // in proportion to to the object's size
+const BORDER_COLOR = [0.0, 0.0, 0.0, 1.0]; // black
+
 const POTENTIAL_PIECE_COLOR = [1.0, 1.0, 0.6, 1.0];
 
 // The possible states for any square on the game board
@@ -41,19 +38,18 @@ const BLACK_KING_HILIGHT = 7;
 const WHITE_KING_HILIGHT = 8;
 const POTENTIAL = 9;
 const POTENTIAL_KING = 10;
-const BLACKS = [ BLACK_PIECE, BLACK_HILIGHT, BLACK_KING, BLACK_KING_HILIGHT ];
-const WHITES = [ WHITE_PIECE, WHITE_HILIGHT, WHITE_KING, WHITE_KING_HILIGHT ];
+
+const PLAYER_2_PIECES = [ BLACK_PIECE, BLACK_HILIGHT, BLACK_KING, BLACK_KING_HILIGHT ];
+const PLAYER_1_PIECES = [ WHITE_PIECE, WHITE_HILIGHT, WHITE_KING, WHITE_KING_HILIGHT ];
 const KINGS = [ BLACK_KING, BLACK_KING_HILIGHT, WHITE_KING, WHITE_KING_HILIGHT, POTENTIAL_KING ];
 const HIGHLIGHTS = [ BLACK_HILIGHT, BLACK_KING_HILIGHT, WHITE_HILIGHT, WHITE_KING_HILIGHT ];
-
 
 function create_starting_game_state() {
     const createRow = (type, offset) => Array(4).fill()
         .flatMap(() => offset ? [ ALWAYS_EMPTY, type ] : [ type, ALWAYS_EMPTY ]);
 
     return {
-        // Start with player 1's (black) turn
-        players_turn: 1,
+        isPlayer1sTurn: true,
         highlighted_piece: null,
         board: [
             createRow(BLACK_PIECE, true),
@@ -68,13 +64,21 @@ function create_starting_game_state() {
     };
 }
 
-
 // Global WebGL context variable
 let gl;
 
 // Initialize the game board
 let GLB_gameState = create_starting_game_state();
 
+function checkBoolean(a) {
+    if (typeof a !== "boolean") {
+        throw new Error("Invalid type, not a boolean: " + String(a));
+    }
+}
+
+function xor(a, b) {
+    return a !== b;
+}
 
 // Once the document is fully loaded run this init function.
 window.addEventListener('load', function init() {
@@ -88,7 +92,7 @@ window.addEventListener('load', function init() {
 
     // Configure WebGL
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(...LIGHT_SQUARE_COLOR);
+    gl.clearColor(1, 0, 1, 1);
 
     // Initialize the WebGL program and data
     gl.program = initProgram();
@@ -99,7 +103,6 @@ window.addEventListener('load', function init() {
 
     initEvents();
 });
-
 
 /**
  * Initializes the WebGL program.
@@ -124,8 +127,9 @@ function initProgram() {
         `#version 300 es
         precision mediump float;
 
-        out vec4 fragColor;
         uniform vec4 uColor;
+
+        out vec4 fragColor;
 
         void main() {
             fragColor = uColor;
@@ -145,26 +149,25 @@ function initProgram() {
     return program;
 }
 
-
 /**
- * Initialize the data buffers.
+ * Initialize the data buffers of all models.
  */
 function initBuffers() {
     const squareCoords = [-1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, 1];
     gl.square = load2DModel(squareCoords);
 
-    
-    const circleCoords = makeCircleCoords(0, 0, 1, 64);
-
-    gl.circle = load2DModel(circleCoords);
-    
+    const normalPieceCoords = makeCircleCoords(0, 0, 1, 64);
+    gl.normalPiece = load2DModel(normalPieceCoords);
 }
 
-
 function load2DModel(coords) {
+    if (coords.length % 2 !== 0) {
+        throw new Error("Invalid length. Length must be a multiple of 2.");
+    }
+
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
-    
+
     // Load the coordinate data into the GPU and associate with shader
     const positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -177,135 +180,28 @@ function load2DModel(coords) {
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
     return {
-        vao: vao,
-        positionBuffer: positionBuffer,
+        vao,
+        positionBuffer,
         numPoints: coords.length / 2
     };
 }
 
-
-/**
- * Initialize event handlers
- */
-function initEvents() {
-    gl.canvas.addEventListener('click', onClick);
-}
-
-function iterateBoard(board, callback) {
-    for (let i = 0; i < 8; ++i) {
-        const rowStartsWithLight = i % 2 === 0; // first row is light
-        for (let j = 0; j < 8; ++j) {
-            const isEvenColumn = (j % 2 === 0)
-            const isSquareDark = rowStartsWithLight !== isEvenColumn;
-            callback(i, j, isSquareDark);
-        }
-    }
-}
-
-function isSquareTypeIn(value, arr) {
-    return arr.indexOf(value) !== -1;
-}
-
-function isSquareHighlighted(squareX, squareY) {
-    const h = GLB_gameState.highlighted_piece;
-    return h !== null && h.x === squareX && h.y === squareY;
-}
-
-/**
- * Render the scene. Uses loop(s) to to go over the entire board and render each square and piece.
- * The light squares (which cannot have pieces on them) are not directly done here but instead by
- * the clear color.
- */
-function render() {
-    // Clear the current rendering
-    gl.clear(gl.COLOR_BUFFER_BIT);
-
-    iterateBoard(GLB_gameState.board, (row, col, isSquareDark) => {
-        if (isSquareDark === true) {
-            renderSquare(isSquareDark, calcMatrixForSquare(row, col, SQUARE_SIZE));
-
-            const squareValue = GLB_gameState.board[row][col];
-
-            if (squareValue !== NO_PIECE) {
-                const squareIsHighlighted = isSquareHighlighted(row, col);
-                
-                renderPiece(
-                    isSquareTypeIn(squareValue, BLACKS),
-                    squareIsHighlighted,
-                    calcMatrixForSquare(row, col, PIECE_SCALE));
-            }
-        }
-    });    
-}
-
-function calcMatrixForSquare(row, col, scaleConstant) {
-    let tx = SQUARE_SIZE * (-7 + (col * 2));
-    let ty = SQUARE_SIZE * (7 - (row * 2));
-
-    let t = glMatrix.mat4.fromTranslation(
-        glMatrix.mat4.create(),
-        [ tx, ty, 0 ]);
-
-    let s = glMatrix.mat4.fromScaling(
-        glMatrix.mat4.create(),
-        Array(3).fill(scaleConstant));
-
-    return glMatrix.mat4.multiply(glMatrix.mat4.create(), t, s);
-}
-
-/**
- * Renders the squares for checkers board.
- * 
- */
-function renderSquare(isSquareDark, modelMatrix) {
-    const color = isSquareDark ? DARK_SQUARE_COLOR : LIGHT_SQUARE_COLOR;
-
-    gl.uniform4fv(gl.program.uColor, Float32Array.from(color));
-    gl.uniformMatrix4fv(gl.program.uModelMatrix, false, modelMatrix);
-
-    gl.bindVertexArray(gl.square.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-    gl.bindVertexArray(null);
-}
-
-function checkBoolean(a) {
-    if (typeof a !== "boolean") {
-        throw new Error("Invalid type, not a boolean: " + String(a));
-    }
-}
-
-/**
- * Renders a circle for the piece.
- */
-function renderPiece(isPlayer1sPiece, isHighlighted, modelMatrix) {
-    checkBoolean(isPlayer1sPiece);
-    checkBoolean(isHighlighted);
-
-    const color = PIECE_COLORS[isPlayer1sPiece ? 0 : 1][isHighlighted ? 0 : 1];
-
-    gl.uniform4fv(gl.program.uColor, Float32Array.from(color));
-    gl.uniformMatrix4fv(gl.program.uModelMatrix, false, modelMatrix);
-        
-    // Draw the circle
-    gl.bindVertexArray(gl.circle.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, gl.circle.numPoints);
-    gl.bindVertexArray(null);
-}
-
-function makeCircleCoords(centerX, centerY, r, n) {
+function makeCircleCoords(centerX, centerY, radius, numSides) {
     // The angle between subsequent vertices
-    let theta = (2 * Math.PI) / n;
+    let theta = (2 * Math.PI) / numSides;
 
     const coords = [];
 
-    let prevX = centerX + r;
-    let prevY = centerY;
+    const firstX = centerX + radius;
+    const firstY = centerY;
+
+    let prevX = firstX;
+    let prevY = firstY;
 
     // Loop over each of the triangles we have to create
-    for (let i = 1; i < n; ++i) {
-        const curX = centerX + (Math.cos(i * theta) * r);
-        const curY = centerY + (Math.sin(i * theta) * r);
-
+    for (let i = 1; i < numSides; ++i) {
+        const curX = centerX + (Math.cos(i * theta) * radius);
+        const curY = centerY + (Math.sin(i * theta) * radius);
 
         // Create and push a triangle
         coords.push(centerX, centerY, prevX, prevY, curX, curY);
@@ -313,36 +209,18 @@ function makeCircleCoords(centerX, centerY, r, n) {
         prevX = curX;
         prevY = curY;
     }
+
     // Connect the last vertex to the first vertex
-    const firstX = centerX + (Math.cos(1 * theta) * r);
-    const firstY = centerY + (Math.sin(1 * theta) * r);
     coords.push(centerX, centerY, prevX, prevY, firstX, firstY);
 
     return coords;
 }
 
-function reset_potentials() {
-    /**
-     * Sets POTENTIAL* spaces to NO_PIECE and *_HILIGHT to the non-hilight versions. Also clears
-     * the hilighted_piece variable.
-     */
-    for (let i = 0; i < GLB_gameState.board.length; ++i) {
-        let row = GLB_gameState.board[i];
-        for (let j = 0; j < row.length; ++j) {
-            if (row[j] === POTENTIAL || row[j] === POTENTIAL_KING) {
-                row[j] = NO_PIECE;
-            } else if (row[j] === BLACK_HILIGHT) {
-                row[j] = BLACK_PIECE;
-            } else if (row[j] === WHITE_HILIGHT) {
-                row[j] = WHITE_PIECE;
-            } else if (row[j] === BLACK_KING_HILIGHT) {
-                row[j] = BLACK_KING;
-            } else if (row[j] === WHITE_KING_HILIGHT) {
-                row[j] = WHITE_KING;
-            }
-        }
-    }
-    GLB_gameState.highlighted_piece = null;
+/**
+ * Initialize event handlers
+ */
+function initEvents() {
+    gl.canvas.addEventListener('click', onClick);
 }
 
 function onClick(e) {
@@ -378,14 +256,46 @@ function onClick(e) {
     // render();
 }
 
-function selectSquare(x, y) {
-    let valueAtSquare = GLB_gameState.board[x][y];
+/**
+ * Sets POTENTIAL* spaces to NO_PIECE and *_HILIGHT to the non-hilight versions. Also clears
+ * the hilighted_piece variable.
+ */
+function reset_potentials() {
+    for (let i = 0; i < BOARD_SIZE; ++i) {
+        for (let j = 0; j < BOARD_SIZE; ++j) {
+            const square = GLB_gameState.board[i][j];
+            let newSquare;
 
-    let squareIsPiece = isValidPiece(true, valueAtSquare) || isValidPiece(false, valueAtSquare);
+            if (square === POTENTIAL || square === POTENTIAL_KING) {
+                newSquare = NO_PIECE;
+            } else if (square === BLACK_HILIGHT) {
+                newSquare = BLACK_PIECE;
+            } else if (square === WHITE_HILIGHT) {
+                newSquare = WHITE_PIECE;
+            } else if (square === BLACK_KING_HILIGHT) {
+                newSquare = BLACK_KING;
+            } else if (square === WHITE_KING_HILIGHT) {
+                newSquare = WHITE_KING;
+            } else {
+                newSquare = square;
+            }
+
+            GLB_gameState.board[i][j] = newSquare;
+        }
+    }
+
+    GLB_gameState.highlighted_piece = null;
+}
+
+function selectSquare(x, y) {
+    let squareValue = GLB_gameState.board[x][y];
+
+    let isSquarePiece = isSquareTypeIn(squareValue,
+        GLB_gameState.isPlayer1sTurn ? PLAYER_1_PIECES : PLAYER_2_PIECES);
 
     // validates the moving piece
     if (GLB_gameState.highlighted_piece != null) {
-        if (canSquareCanBeMovedTo(GLB_gameState.highlighted_piece.x, GLB_gameState.highlighted_piece.y, x, y)) {
+        if (canSquareBeMovedTo(GLB_gameState.highlighted_piece.x, GLB_gameState.highlighted_piece.y, x, y)) {
             // TODO: move piece
 
             return;
@@ -395,21 +305,16 @@ function selectSquare(x, y) {
         }
     }
 
-    if (squareIsPiece) {
+    if (isSquarePiece) {
         GLB_gameState.highlighted_piece = {x, y};
         // TODO: highlight squares the piece can move to
     }
 }
 
-function isValidPiece(isBlack, value) {
-    return isBlack ? "black" && BLACKS.indexOf(value) !== -1
-        : "white" && WHITES.indexOf(value) !== -1;
-}
-
-function canSquareCanBeMovedTo(pieceX, pieceY, squareX, squareY) {
-    const piece = board[pieceX][pieceY];
+function canSquareBeMovedTo(pieceX, pieceY, squareX, squareY) {
+    const piece = GLB_gameState.board[pieceX][pieceY];
     const isKing = KINGS.indexOf(piece) !== -1;
-    const squareToMoveTo = board[squareX][squareY];
+    const squareToMoveTo = GLB_gameState.board[squareX][squareY];
 
     let squareAfterX = -1;
     let squareAfterY = -1;
@@ -418,12 +323,12 @@ function canSquareCanBeMovedTo(pieceX, pieceY, squareX, squareY) {
         squareAfterX = pieceX + (2 * (squareX - pieceX));
         squareAfterY = pieceY + (2 * (squareY - pieceY));
 
-        if (squareAfterX < 0 || squareAfterX >= 8
-            || squareAfterY < 0 || squareAfterY > 8) {
+        if (squareAfterX < 0 || squareAfterX >= BOARD_SIZE
+            || squareAfterY < 0 || squareAfterY > BOARD_SIZE) {
             squareAfterX = -1;
             squareAfterY = -1;
         } else {
-            squareAfter = board[squareAfterX][squareAfterY];   
+            squareAfter = GLB_gameState.board[squareAfterX][squareAfterY];   
         }
     }
 
@@ -444,5 +349,127 @@ function canSquareCanBeMovedTo(pieceX, pieceY, squareX, squareY) {
             // piece.move(); needs to move over the piece
         }
         return;
+    }
+}
+
+/**
+ * Render the scene. Uses loop(s) to to go over the entire board and render each square and piece.
+ * The light squares (which cannot have pieces on them) are not directly done here but instead by
+ * the clear color.
+ */
+function render() {
+    // Clear the current rendering
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    iterateBoard(GLB_gameState.board, (row, col, squareValue, isSquareMoveable) => {
+        renderSquare(isSquareMoveable, calcMatrixForSquare(row, col, SQUARE_SIZE));
+        
+        if (!isSquareEmpty(squareValue)) {                
+            renderPiece(
+                isSquareTypeIn(squareValue, PLAYER_1_PIECES),
+                isSquareHighlighted(row, col),
+                calcMatrixForSquare(row, col, PIECE_SIZE),
+                calcMatrixForSquare(row, col, PIECE_SIZE * (1 + BORDER_THICKNESS))
+            );
+        }
+    });
+}
+
+function iterateBoard(board, callback) {
+    for (let i = 0; i < BOARD_SIZE; ++i) {
+        const isRowOffset = i % 2 === 0; // first row (i=0) is offset
+        
+        for (let j = 0; j < BOARD_SIZE; ++j) {
+            const isColumnEven = j % 2 === 0;
+            const isSquareMoveable = xor(isRowOffset, isColumnEven);
+            
+            callback(i, j, board[i][j], isSquareMoveable);
+        }
+    }
+}
+
+function isSquareEmpty(type) {
+    return type === NO_PIECE || type === ALWAYS_EMPTY;
+}
+
+function isSquareTypeIn(type, types) {
+    return types.indexOf(type) !== -1;
+}
+
+function isSquareHighlighted(squareX, squareY) {
+    const h = GLB_gameState.highlighted_piece;
+    return h !== null && h.x === squareX && h.y === squareY;
+}
+
+function calcMatrixForSquare(row, col, scaleConstant) {
+    let tx = SQUARE_SIZE * (-7 + (col * 2));
+    let ty = SQUARE_SIZE * (7 - (row * 2));
+
+    let t = glMatrix.mat4.fromTranslation(
+        glMatrix.mat4.create(),
+        [ tx, ty, 0 ]);
+
+    let s = glMatrix.mat4.fromScaling(
+        glMatrix.mat4.create(),
+        Array(3).fill(scaleConstant));
+
+    return glMatrix.mat4.multiply(glMatrix.mat4.create(), t, s);
+}
+
+/**
+ * Renders the squares for checkers board.
+ */
+function renderSquare(isSquareMoveable, modelMatrix) {
+    gl.uniformMatrix4fv(gl.program.uModelMatrix, false, modelMatrix);
+    
+    const color = isSquareMoveable ? MOVEABLE_SQUARE_COLOR : IMMOVABLE_SQUARE_COLOR;
+    gl.uniform4fv(gl.program.uColor, Float32Array.from(color));
+
+    renderTriangles(gl.square);
+}
+
+/**
+ * Renders a circle for the piece.
+ */
+function renderPiece(isPlayer1sPiece, isHighlighted, modelMatrix, borderMatrix) {
+    checkBoolean(isPlayer1sPiece);
+    checkBoolean(isHighlighted);
+
+    // Draw the Border
+    gl.uniformMatrix4fv(gl.program.uModelMatrix, false, borderMatrix);
+
+    gl.uniform4fv(gl.program.uColor, Float32Array.from(BORDER_COLOR));
+
+    renderTriangles(gl.normalPiece);
+
+
+    // Draw the Piece
+    gl.uniformMatrix4fv(gl.program.uModelMatrix, false, modelMatrix);
+
+    const c = getPieceColor(isPlayer1sPiece, isHighlighted);
+    gl.uniform4fv(gl.program.uColor, Float32Array.from(c));
+
+    renderTriangles(gl.normalPiece);
+}
+
+function renderTriangles(model) {
+    gl.bindVertexArray(model.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, model.numPoints);
+    gl.bindVertexArray(null);
+}
+
+function getPieceColor(isPlayer1sPiece, isHighlighted) {
+    if (isPlayer1sPiece) {
+        if (isHighlighted) {
+            return PLAYER_1_HIGHLIGHTED_PIECE_COLOR;
+        } else {
+            return PLAYER_1_PIECE_COLOR;
+        }
+    } else {
+        if (isHighlighted) {
+            return PLAYER_2_HIGHLIGHTED_PIECE_COLOR;
+        } else {
+            return PLAYER_2_PIECE_COLOR;
+        }
     }
 }
