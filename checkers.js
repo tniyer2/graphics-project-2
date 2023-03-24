@@ -7,7 +7,7 @@
 
 // Drawing Sizes
 const SQUARE_SIZE = 1 / 8; // 8 boxes across, screen is 2 units wide (from -1 to 1)
-const PIECE_RADIUS = (SQUARE_SIZE * 0.8) / 2; // make the radius a little smaller than a square so it fits inside
+const PIECE_SCALE = SQUARE_SIZE * 0.8; // make the radius a little smaller than a square so it fits inside
 
 // Square Colors
 const DARK_SQUARE_COLOR = [0.82, 0.55, 0.28, 1.0];
@@ -222,9 +222,7 @@ function render() {
 
     iterateBoard(GLB_gameState.board, (row, col, isSquareDark) => {
         if (isSquareDark === true) {
-            const modelMatrix = calcMatrixForSquare(row, col);
-
-            renderSquare(isSquareDark, modelMatrix);
+            renderSquare(isSquareDark, calcMatrixForSquare(row, col, SQUARE_SIZE));
 
             const squareValue = GLB_gameState.board[row][col];
 
@@ -234,13 +232,13 @@ function render() {
                 renderPiece(
                     isSquareTypeIn(squareValue, BLACKS),
                     squareIsHighlighted,
-                    modelMatrix);
+                    calcMatrixForSquare(row, col, PIECE_SCALE));
             }
         }
     });    
 }
 
-function calcMatrixForSquare(row, col) {
+function calcMatrixForSquare(row, col, scaleConstant) {
     let tx = SQUARE_SIZE * (-7 + (col * 2));
     let ty = SQUARE_SIZE * (7 - (row * 2));
 
@@ -250,7 +248,7 @@ function calcMatrixForSquare(row, col) {
 
     let s = glMatrix.mat4.fromScaling(
         glMatrix.mat4.create(),
-        Array(3).fill(SQUARE_SIZE));
+        Array(3).fill(scaleConstant));
 
     return glMatrix.mat4.multiply(glMatrix.mat4.create(), t, s);
 }
@@ -348,7 +346,7 @@ function reset_potentials() {
 }
 
 function onClick(e) {
-    e.preventDefault();
+    // e.preventDefault();
 
     // // Convert x and y from window coordinates (pixels) to clip coordinates (-1,-1 to 1,1)
     // let [x, y, w, h] = [e.offsetX, e.offsetY, this.width, this.height];
@@ -376,8 +374,8 @@ function onClick(e) {
     //     }
     // }
     
-    selectSquare(x, y);
-    render();
+    // selectSquare(x, y);
+    // render();
 }
 
 function selectSquare(x, y) {
