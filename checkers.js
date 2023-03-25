@@ -42,15 +42,13 @@ const POTENTIAL_KING = 10;
 const PLAYER_1_PIECES = [ PLAYER_1_PIECE, PLAYER_1_PIECE_HIGHLIGHT, PLAYER_1_KING, PLAYER_1_KING_HIGHLIGHT ];
 const PLAYER_2_PIECES = [ PLAYER_2_PIECE, PLAYER_2_PIECE_HIGHLIGHT, PLAYER_2_KING, PLAYER_2_KING_HIGHLIGHT ];
 const KINGS = [ PLAYER_1_KING, PLAYER_1_KING_HIGHLIGHT, PLAYER_2_KING, PLAYER_2_KING_HIGHLIGHT, POTENTIAL_KING ];
-const HIGHLIGHTS = [ PLAYER_1_PIECE_HIGHLIGHT, PLAYER_1_KING_HIGHLIGHT, PLAYER_2_PIECE_HIGHLIGHT, PLAYER_2_KING_HIGHLIGHT ];
 const POTENTIALS = [ POTENTIAL_PIECE, POTENTIAL_KING ];
 
 function create_starting_game_state() {
     const createRow = (type, offset) => Array(4).fill()
         .flatMap(() => offset ? [ ALWAYS_EMPTY, type ] : [ type, ALWAYS_EMPTY ]);
 
-    return {
-        isPlayer1sTurn: true,
+    const r = {
         selected_piece: null,
         board: [
             createRow(PLAYER_1_PIECE, true),
@@ -63,6 +61,17 @@ function create_starting_game_state() {
             createRow(PLAYER_2_PIECE, false)
         ]
     };
+
+    let isPlayer1sTurn = true;
+    Object.defineProperty(r, "isPlayer1sTurn", {
+        "get": () => isPlayer1sTurn,
+        "set": (a) => {
+            isPlayer1sTurn = a;
+            updateTurnDisplay();
+        }
+    });
+
+    return r;
 }
 
 // Global WebGL context variable
@@ -93,7 +102,9 @@ window.addEventListener('load', function init() {
     gl.program = initProgram();
     initBuffers();
 
-    update_playerTurn_Display();
+    // set initial turn display
+    updateTurnDisplay();
+
     // Render the static scene
     render();
 
@@ -154,8 +165,12 @@ function initBuffers() {
 
     const normalPieceCoords = makeCircleCoords(0, 0, 1, 64);
     gl.normalPiece = load2DModel(normalPieceCoords);
+
+    const kingPieceCoords = [0, 1, -1, -1, 1, -1];
+    gl.kingPiece = load2DModel(kingPieceCoords);
 }
 
+// Loads a model into the GPU.
 function load2DModel(coords) {
     if (coords.length % 2 !== 0) {
         throw new Error("Invalid length. Length must be a multiple of 2.");
@@ -182,6 +197,8 @@ function load2DModel(coords) {
     };
 }
 
+// Creates a circle model.
+// Returns an array of float positions.
 function makeCircleCoords(centerX, centerY, radius, numSides) {
     // The angle between subsequent vertices
     let theta = (2 * Math.PI) / numSides;
@@ -232,38 +249,42 @@ function onClick(e) {
     y = Math.ceil(((1 - y) * 4) - 1);
     
     selectSquare(x, y);
-    update_playerTurn_Display();
     render();
 }
 
+// selects a square, this can either select a piece or move a piece to a potential square
 function selectSquare(x, y) {
-    let square = GLB_gameState.board[y][x];
+    let square = getSquare(x, y);
 
     let isPieceOwnedByPlayerWithCurrentTurn = isSquareTypeIn(square,
         GLB_gameState.isPlayer1sTurn ? PLAYER_1_PIECES : PLAYER_2_PIECES);
 
-    if (isPieceOwnedByPlayerWithCurrentTurn) {
+    if (isPieceOwnedByPlayerWithCurrentTurn) { // selects a piece
         if (!isPieceSelected(x, y)) {
             reset_potentials();
             selectPiece(square, x, y);
         }
-    } else if (isSquareTypeIn(square, POTENTIALS)) {
-        const sp = GLB_gameState.selected_piece;
-        movePiece(sp.x, sp.y, sp.moves.find(m => m.x === x && m.y === y));
+    } else if (isSquareTypeIn(square, POTENTIALS)) { // moves a piece to a potential square
+        const piece = GLB_gameState.selected_piece;
+        const move = piece.moves.find(m => m.x === x && m.y === y);
+        
+        movePiece(piece.x, piece.y, move);
     }
 }
 
+// selects a piece, (only real ones not potential)
 function selectPiece(piece, x, y) {
     const moves = getPossibleMoves(piece, x, y);
-    highlightSquares(moves);
+    markPotentialSquares(moves);
 
     GLB_gameState.selected_piece = {x, y, moves};
     GLB_gameState.board[y][x] = toHighlighted(piece);
 }
 
-function getPossibleMoves(piece, fromX, fromY) { // do not forget about that if you can jump over a piece, you are forced to do it
-    const isPlayer1sPiece = isSquareTypeIn(piece, PLAYER_1_PIECES);
-    const isKing = isSquareTypeIn(piece, KINGS);
+// returns a list of possible moves for a given piece
+function getPossibleMoves(fromPiece, fromX, fromY) {
+    const isPlayer1sPiece = isSquareTypeIn(fromPiece, PLAYER_1_PIECES);
+    const isKing = isSquareTypeIn(fromPiece, KINGS);
 
     const forwardDir = isPlayer1sPiece ? 1 : -1;
 
@@ -327,13 +348,15 @@ function getSquare(x, y) {
     }
 }
 
-function highlightSquares(moves) {
+// marks all potential squares that can be moved to as potential
+function markPotentialSquares(moves) {
     for (let i = 0; i < moves.length; ++i) {
         const {x, y, isKing} = moves[i];
         GLB_gameState.board[y][x] = isKing ? POTENTIAL_KING : POTENTIAL_PIECE;
     }
 }
 
+// converts piece to highlighted version
 function toHighlighted(piece) {
     switch (piece) {
     case PLAYER_1_PIECE:
@@ -349,6 +372,7 @@ function toHighlighted(piece) {
     }
 }
 
+// executes a move for a piece on (fromX, fromY)
 function movePiece(fromX, fromY, move) {
     const fromSquare = getSquare(fromX, fromY);
     const {x: toX, y: toY, isKing} = move;
@@ -356,17 +380,28 @@ function movePiece(fromX, fromY, move) {
     GLB_gameState.board[fromY][fromX] = NO_PIECE;
 
     const isPlayer1sPiece = isSquareTypeIn(fromSquare, PLAYER_1_PIECES);
-    GLB_gameState.board[toY][toX] = isKing ?
+    const newToSquare = isKing ?
         (isPlayer1sPiece ? PLAYER_1_KING : PLAYER_2_KING)
         : (isPlayer1sPiece ? PLAYER_1_PIECE : PLAYER_2_PIECE);
+    GLB_gameState.board[toY][toX] = newToSquare;
 
     if (move.type === "skip") {
         const {skipOverX, skipOverY} = move;
         GLB_gameState.board[skipOverY][skipOverX] = NO_PIECE;
     }
 
-    GLB_gameState.isPlayer1sTurn = !GLB_gameState.isPlayer1sTurn;
     reset_potentials();
+
+    const canDoubleJump =
+        move.type === "skip"
+        && getPossibleMoves(newToSquare, toX, toY)
+            .filter(m => m.type === "skip").length > 0;
+
+    if (canDoubleJump) {
+        selectPiece(newToSquare, toX, toY);
+    } else {
+        GLB_gameState.isPlayer1sTurn = !GLB_gameState.isPlayer1sTurn;
+    }
 }
 
 /**
@@ -422,6 +457,7 @@ function render() {
     });
 }
 
+// iterates through board from top left to bottom right
 function iterateBoard(board, callback) {
     for (let i = 0; i < BOARD_SIZE; ++i) {
         const isRowOffset = i % 2 === 0; // first row (i=0) is offset
@@ -435,19 +471,23 @@ function iterateBoard(board, callback) {
     }
 }
 
+// returns whether a square doesn't contain any pieces (including potential)
 function isSquareEmpty(type) {
     return type === NO_PIECE || type === ALWAYS_EMPTY;
 }
 
+// returns if a square's type can be found in types.
 function isSquareTypeIn(type, types) {
     return types.indexOf(type) !== -1;
 }
 
+// returns if the piece on (squareX, squareY) is currently selected.
 function isPieceSelected(squareX, squareY) {
     const h = GLB_gameState.selected_piece;
     return h !== null && h.x === squareX && h.y === squareY;
 }
 
+// calculates the model matrix for a given square.
 function calcMatrixForSquare(row, col, scaleConstant) {
     let tx = SQUARE_SIZE * (-7 + (col * 2));
     let ty = SQUARE_SIZE * (7 - (row * 2));
@@ -478,22 +518,25 @@ function renderSquare(isSquareMoveable, modelMatrix) {
 /**
  * Renders a circle for the piece.
  */
-function renderPiece(squareValue, modelMatrix, borderMatrix) {
+function renderPiece(square, modelMatrix, borderMatrix) {
+    const isKing = isSquareTypeIn(square, KINGS);
+    const pieceModel = isKing ? gl.kingPiece : gl.normalPiece;
+
     // Draw the Border
     gl.uniformMatrix4fv(gl.program.uModelMatrix, false, borderMatrix);
 
     gl.uniform4fv(gl.program.uColor, Float32Array.from(BORDER_COLOR));
 
-    renderTriangles(gl.normalPiece);
+    renderTriangles(pieceModel);
 
 
     // Draw the Piece
     gl.uniformMatrix4fv(gl.program.uModelMatrix, false, modelMatrix);
 
-    const c = getPieceColor(squareValue);
+    const c = getPieceColor(square);
     gl.uniform4fv(gl.program.uColor, Float32Array.from(c));
 
-    renderTriangles(gl.normalPiece);
+    renderTriangles(pieceModel);
 }
 
 function renderTriangles(model) {
@@ -502,8 +545,9 @@ function renderTriangles(model) {
     gl.bindVertexArray(null);
 }
 
-function getPieceColor(squareValue) {
-    switch (squareValue) {
+// returns the corresponding color value for a given piece type.
+function getPieceColor(piece) {
+    switch (piece) {
     case PLAYER_1_PIECE:
         return PLAYER_1_PIECE_COLOR;
     case PLAYER_1_KING:
@@ -529,15 +573,8 @@ function getPieceColor(squareValue) {
     }
 }
 
-function update_playerTurn_Display() {
+// updates the turn display to show who's turn it is.
+function updateTurnDisplay() {
     const elm = document.getElementById('player_turn');
     elm.textContent = GLB_gameState.isPlayer1sTurn ? "Player 1's Turn" : "Player 2's Turn";
-}
-
-function forced_play () {
-    // for all moves that "player" can do, if there is a possiible skipOver move, if forces the player to do that move.
-}
-
-function make_a_king () {
-    // if piece gets to the end of the board, it turns into a king.
 }
